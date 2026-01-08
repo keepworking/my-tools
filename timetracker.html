@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Desk Time Tracker</title>
+  <style>
+    :root{
+      --bg:#0b0f14;
+      --text:#e6edf3;
+      --muted:#9fb0c0;
+      --shadow: 0 10px 22px rgba(0,0,0,.30);
+      --radius: 12px;
+
+      --accent:#4aa3ff;
+      --danger:#ff5a6b;
+      --ok:#35d07f;
+      --warn:#ffcc66;
+
+      --snapMin: 5;
+
+      /* per-page timeline size */
+      --planW: 280px; --planH: 640px;  /* 계획: 스크롤 괜찮 */
+      --doW: 260px;   --doH: 210px;    /* 수행: 스크롤 없게 작은 미니 */
+      --logW: 300px;  --logH: 720px;   /* 기록: 24시간 표시 */
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", "Apple SD Gothic Neo", Arial, sans-serif;
+      background: linear-gradient(180deg, #070a0f, #0b0f14);
+      color:var(--text);
+    }
+    header{
+      position:sticky; top:0; z-index:10;
+      background: rgba(11,15,20,.88);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:12px 14px}
+    .topbar{display:flex; gap:12px; align-items:center; justify-content:space-between;}
+    .brand{display:flex; flex-direction:column; gap:2px}
+    .brand b{font-size:15px}
+    .brand small{color:var(--muted); font-size:12px}
+    nav{display:flex; gap:8px; flex-wrap:wrap}
+    nav a{
+      text-decoration:none; color:var(--text);
+      padding:8px 10px;
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:999px;
+      background: rgba(255,255,255,.04);
+      font-size:13px;
+    }
+    nav a.active{
+      border-color: rgba(74,163,255,.65);
+      box-shadow: 0 0 0 3px rgba(74,163,255,.12);
+    }
+
+    main{max-width:1100px;margin:0 auto;padding:14px 14px 28px}
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 360px;
+      gap:12px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .grid{grid-template-columns: 1fr}
+    }
+
+    /* 모바일: 수행/기록에서 “핵심(버튼/상태)” 우선 */
+    .doLeft{order:1}
+    .doRight{order:2}
+    @media (max-width: 700px){
+      .doLeft{order:2}
+      .doRight{order:1}
+      .hideOnMobile{display:none !important;}
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card .hd{
+      padding:10px 12px 8px;
+      border-bottom:1px solid rgba(255,255,255,.06);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .card .hd h2{margin:0;font-size:14px;letter-spacing:.2px}
+    .card .bd{padding:12px}
+
+    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+    input[type="text"], textarea{
+      background: rgba(15,22,34,.85);
+      border:1px solid rgba(255,255,255,.10);
+      color: var(--text);
+      border-radius: 10px;
+      padding:9px 10px;
+      outline:none;
+    }
+    textarea{min-height:90px; width:100%; resize:vertical}
+    .btn{
+      cursor:pointer;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:9px 10px;
+      border-radius: 10px;
+      user-select:none;
+      font-size:13px;
+    }
+    .btn.primary{border-color: rgba(74,163,255,.55); background: rgba(74,163,255,.15);}
+    .btn.ok{border-color: rgba(53,208,127,.5); background: rgba(53,208,127,.12);}
+    .btn.warn{border-color: rgba(255,204,102,.55); background: rgba(255,204,102,.12);}
+    .btn.danger{border-color: rgba(255,90,107,.55); background: rgba(255,90,107,.12);}
+    .btn:active{transform: translateY(1px)}
+    .sep{height:1px;background:rgba(255,255,255,.06); margin:10px 0}
+    .hint{font-size:12px; color:var(--muted); line-height:1.45}
+    .muted{color:var(--muted)}
+
+    .pill{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      font-size:12px;
+    }
+    .pill.on{border-color: rgba(53,208,127,.55); background: rgba(53,208,127,.12);}
+    .pill.interrupt{border-color: rgba(255,204,102,.55); background: rgba(255,204,102,.12);}
+
+    /* timeline */
+    .timelineWrap{
+      display:grid;
+      grid-template-columns: 56px 1fr;
+      gap:8px;
+      align-items:start;
+    }
+    .timeCol{
+      position:relative;
+      color: var(--muted);
+      font-size:12px;
+    }
+    .timeCol .tick{
+      position:absolute; left:0;
+      transform: translateY(-50%);
+      display:flex; gap:6px; align-items:center;
+      width:100%;
+    }
+    .timeCol .tick::after{
+      content:"";
+      height:1px;
+      background: rgba(255,255,255,.05);
+      flex:1;
+    }
+    .timeline{
+      position:relative;
+      background: rgba(15,22,34,.55);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      overflow:hidden;
+    }
+    .timeline .nowLine{
+      position:absolute; left:0; right:0;
+      height:2px;
+      background: rgba(74,163,255,.8);
+      box-shadow: 0 0 0 3px rgba(74,163,255,.12);
+      pointer-events:none;
+      display:none;
+    }
+
+    /* per-page timeline sizing */
+    #planTimeCol{height: var(--planH);}
+    #planTimeline{height: var(--planH); width: var(--planW);}
+    #doTimeCol{height: var(--doH);}
+    #doTimeline{height: var(--doH); width: var(--doW);}
+    #logTimeCol{height: var(--logH);}
+    #logTimeline{height: var(--logH); width: var(--logW);}
+
+    .block{
+      position:absolute;
+      left:8px;
+      right:8px;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.08);
+      box-shadow: 0 8px 18px rgba(0,0,0,.22);
+      overflow:hidden;
+      cursor:grab;
+      user-select:none;
+    }
+    .block:active{cursor:grabbing}
+    .block .label{
+      padding:7px 9px;
+      font-size:13px;
+      display:flex; justify-content:space-between; gap:10px;
+      align-items:center;
+    }
+    .block .label small{color:rgba(255,255,255,.75); font-size:12px}
+    .block .resize{
+      position:absolute;
+      left:0; right:0; bottom:0;
+      height:14px;
+      cursor:ns-resize;
+      background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.25));
+    }
+    .block.interrupt{
+      border-color: rgba(255,204,102,.38);
+      background: rgba(255,204,102,.10);
+    }
+
+    .list{display:flex; flex-direction:column; gap:8px;}
+    .item{
+      padding:10px 10px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+      border-radius: 12px;
+      display:flex; justify-content:space-between; gap:10px; align-items:center;
+    }
+    .item b{font-size:13px}
+    .item small{color:var(--muted); font-size:12px}
+
+    /* 수행: 버튼은 빠르게 누르기 좋게 */
+    .actionList .actionBtn{
+      width:100%;
+      text-align:left;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:12px 12px;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      cursor:pointer;
+      color:var(--text);
+      font-size:14px;
+    }
+    .actionList .actionBtn:active{transform: translateY(1px)}
+    .actionList .actionBtn .left{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .actionList .actionBtn .left b{
+      font-size:14px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width: 260px;
+    }
+    .actionList .actionBtn .left small{color:var(--muted); font-size:12px}
+       .actionList .actionBtn .right{
+      display:flex; align-items:center; gap:8px;
+      font-size:12px;
+      color:rgba(255,255,255,.80);
+    }
+    .actionList .actionBtn.interruptBig{
+      padding:16px 12px;
+      border-color: rgba(255,204,102,.60);
+      background: rgba(255,204,102,.14);
+      font-size:16px;
+    }
+    .actionList .actionBtn.running{
+      border-color: rgba(74,163,255,.65);
+      box-shadow: 0 0 0 3px rgba(74,163,255,.12);
+      background: rgba(74,163,255,.12);
+    }
+
+    /* 수행: 상단 “현재 작업/경과” 패널 */
+    .focus{
+      padding:12px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+      border-radius: 12px;
+    }
+    .focus .title{
+      font-size:16px;
+      font-weight:700;
+      margin:0 0 6px 0;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .focus .sub{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .focus .bigTimer{
+      font-size:20px;
+      font-weight:800;
+      letter-spacing:.4px;
+      margin-top:8px;
+    }
+
+    .page{display:none}
+    .page.active{display:block}
+    .mono{
+      width:100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size:12px;
+      line-height:1.45;
+      white-space:pre-wrap;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap topbar">
+    <div class="brand">
+      <b>Desk Time Tracker</b>
+      <small>단일 HTML / localStorage / 계획 + 수행 + 기록</small>
+    </div>
+    <nav>
+      <a href="#plan" id="navPlan">계획</a>
+      <a href="#do" id="navDo">수행</a>
+      <a href="#log" id="navLog">기록</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- PLAN -->
+  <section id="pagePlan" class="page">
+    <div class="grid">
+      <div class="card">
+        <div class="hd">
+          <h2>계획 타임라인 (09:00~18:00)</h2>
+          <div class="row">
+            <button class="btn danger" id="btnResetAll1">초기화(전부 삭제)</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="timelineWrap">
+            <div class="timeCol" id="planTimeCol"></div>
+            <div class="timeline" id="planTimeline"></div>
+          </div>
+          <div class="sep"></div>
+          <div class="hint">드래그: 이동 / 아래쪽: 길이 조절 / 5분 스냅</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>할일</h2></div>
+        <div class="bd">
+          <div class="row">
+            <input type="text" id="planNewTitle" placeholder="할일 이름" style="flex:1 1 auto; min-width:200px;">
+            <button class="btn primary" id="btnAddPlan">추가</button>
+          </div>
+          <div class="sep"></div>
+          <div class="list" id="planList"></div>
+          <div class="hint" id="planEmptyHint" style="display:none; margin-top:8px;">
+            아직 할일이 없습니다. 추가하세요.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DO -->
+  <section id="pageDo" class="page">
+    <div class="grid">
+      <div class="card doLeft hideOnMobile">
+        <div class="hd">
+          <h2>미니 타임라인 (09:00~18:00)</h2>
+          <div class="row">
+            <button class="btn" id="btnRefreshNow">새로고침</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="timelineWrap">
+            <div class="timeCol" id="doTimeCol"></div>
+            <div class="timeline" id="doTimeline">
+              <div class="nowLine" id="nowLine"></div>
+            </div>
+          </div>
+          <div class="sep"></div>
+          <div class="hint">수행 화면은 스크롤 없이 보이게 타임라인을 축소했습니다.</div>
+        </div>
+      </div>
+
+      <div class="card doRight">
+        <div class="hd">
+          <h2>수행</h2>
+          <div class="row">
+            <button class="btn danger" id="btnStop">중지</button>
+            <button class="btn danger" id="btnResetAll2">초기화(전부 삭제)</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="focus" style="margin-bottom:10px;">
+            <div class="row" style="justify-content:space-between;">
+              <span class="pill" id="statusPill">대기</span>
+              <span class="pill" id="startPill">시작: -</span>
+            </div>
+            <p class="title" id="focusTitle">지금 수행 중인 작업 없음</p>
+            <div class="sub">
+              <span id="focusKind">종류: -</span>
+              <span id="focusPlan">계획: -</span>
+            </div>
+            <div class="bigTimer" id="bigTimer">00:00:00</div>
+          </div>
+
+          <div class="list actionList" id="doButtons"></div>
+          <div class="sep"></div>
+          <div class="hint">
+            - 버튼을 누른 순간부터 기록 시작<br/>
+            - 다른 버튼을 누르면 자동 전환(이전 기록 종료)<br/>
+            - 버튼은 계획 시간 순서로 정렬됩니다
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOG -->
+  <section id="pageLog" class="page">
+    <div class="grid">
+      <div class="card">
+        <div class="hd">
+          <h2>기록 타임라인 (00:00~24:00)</h2>
+          <div class="row">
+            <button class="btn primary" id="btnCopyText">복사 텍스트</button>
+            <button class="btn" id="btnExport">내보내기(JSON)</button>
+            <button class="btn danger" id="btnResetAll3">초기화(전부 삭제)</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="timelineWrap">
+            <div class="timeCol" id="logTimeCol"></div>
+            <div class="timeline" id="logTimeline"></div>
+          </div>
+          <div class="sep"></div>
+          <div class="hint">09~18 밖의 기록도 여기서 표시/편집됩니다.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>상세 편집</h2></div>
+        <div class="bd" id="editorPane">
+          <div class="hint">기록 블록을 클릭하면 여기에서 편집합니다.</div>
+        </div>
+        <div class="card" style="margin-top:12px;">
+          <div class="hd"><h2>복사 결과</h2></div>
+          <div class="bd">
+            <textarea id="copyOut" class="mono" placeholder="복사 텍스트가 여기 생성됩니다."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* =========================
+   Storage / constants
+========================= */
+const LS_PLAN = "dtt_plan_v3";
+const LS_LOGS = "dtt_logs_v3";
+const LS_STATE = "dtt_state_v3";
+
+const SNAP_MIN = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--snapMin')) || 5;
+
+// plan timeline range (and plan task units)
+const PLAN_START_H = 9;
+const PLAN_END_H = 18;
+const PLAN_RANGE_MIN = (PLAN_END_H - PLAN_START_H) * 60; // 540
+
+// log timeline range (24h)
+const LOG_START_H = 0;
+const LOG_END_H = 24;
+const LOG_RANGE_MIN = (LOG_END_H - LOG_START_H) * 60; // 1440
+
+const $ = (sel, el=document) => el.querySelector(sel);
+const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+const uid = () => Math.random().toString(36).slice(2,10) + "-" + Date.now().toString(36);
+
+function loadJSON(key, fallback){
+  try{
+    const v = localStorage.getItem(key);
+    if(!v) return fallback;
+    return JSON.parse(v);
+  }catch(e){ return fallback; }
+}
+function saveJSON(key, value){ localStorage.setItem(key, JSON.stringify(value)); }
+
+function pad2(n){ return String(n).padStart(2,'0'); }
+function msToHMS(ms){
+  const s = Math.max(0, Math.floor(ms/1000));
+  const hh = Math.floor(s/3600);
+  const mm = Math.floor((s%3600)/60);
+  const ss = s%60;
+  return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+}
+function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+function roundToSnap(mins){ return Math.round(mins / SNAP_MIN) * SNAP_MIN; }
+
+function minsToTimeStr(minsFromMidnight){
+  const h = Math.floor(minsFromMidnight/60), m = minsFromMidnight%60;
+  return `${pad2(h)}:${pad2(m)}`;
+}
+function timeStrToMins(t){
+  const [h,m] = t.split(":").map(Number);
+  if(Number.isNaN(h)||Number.isNaN(m)) return null;
+  return h*60+m;
+}
+function dateKey(d=new Date()){
+  const y = d.getFullYear();
+  const mo = pad2(d.getMonth()+1);
+  const da = pad2(d.getDate());
+  return `${y}-${mo}-${da}`;
+}
+function toLocalMinsFromMidnight(ts){
+  const d = new Date(ts);
+  return d.getHours()*60 + d.getMinutes();
+}
+
+function getPlan(){ return loadJSON(LS_PLAN, { tasks: [] }); }
+function setPlan(plan){ saveJSON(LS_PLAN, plan); }
+function getLogs(){ return loadJSON(LS_LOGS, { segments: [] }); }
+function setLogs(logs){ saveJSON(LS_LOGS, logs); }
+function getRunState(){ return loadJSON(LS_STATE, null); }
+function setRunState(state){
+  if(state) saveJSON(LS_STATE, state);
+  else localStorage.removeItem(LS_STATE);
+}
+
+function resetAll(){
+  if(!confirm("계획/기록/진행중 상태까지 전부 삭제합니다. 진행할까요?")) return;
+  localStorage.removeItem(LS_PLAN);
+  localStorage.removeItem(LS_LOGS);
+  localStorage.removeItem(LS_STATE);
+  $("#editorPane").innerHTML = `<div class="hint">기록 블록을 클릭하면 여기에서 편집합니다.</div>`;
+  delete $("#editorPane").dataset.editingId;
+  renderAll();
+  updateStatusUI();
+}
+
+/* =========================
+   Routing
+========================= */
+function setActivePage(hash){
+  const h = (hash || location.hash || "#plan").toLowerCase();
+  const page = h === "#do" ? "do" : (h === "#log" ? "log" : "plan");
+
+  $$(".page").forEach(s => s.classList.remove("active"));
+  $("#navPlan").classList.toggle("active", page==="plan");
+  $("#navDo").classList.toggle("active", page==="do");
+  $("#navLog").classList.toggle("active", page==="log");
+
+  $("#pagePlan").classList.toggle("active", page==="plan");
+  $("#pageDo").classList.toggle("active", page==="do");
+  $("#pageLog").classList.toggle("active", page==="log");
+
+  renderAll();
+}
+
+/* =========================
+   Timeline helpers (generic)
+========================= */
+function getHeightPx(el){
+  return el.getBoundingClientRect().height || parseFloat(getComputedStyle(el).height) || 600;
+}
+function pxPerMin(rangeMin, heightPx){
+  return heightPx / rangeMin;
+}
+function yFromMin(mins, rangeMin, heightPx){
+  return mins * pxPerMin(rangeMin, heightPx);
+}
+function minFromY(y, rangeMin, heightPx){
+  return y / pxPerMin(rangeMin, heightPx);
+}
+
+function buildTimeColumn(colEl, startHour, endHour, rangeMin){
+  colEl.innerHTML = "";
+  const H = getHeightPx(colEl);
+  for(let h=startHour; h<=endHour; h++){
+    const minsFromStart = (h-startHour)*60;
+    const y = (minsFromStart / rangeMin) * H;
+    const t = document.createElement("div");
+    t.className = "tick";
+    t.style.top = `${y}px`;
+    t.innerHTML = `<span>${pad2(h%24)}:00</span>`;
+    colEl.appendChild(t);
+  }
+}
+
+function updateBlockStyle(blockEl, startMin, endMin, rangeMin, heightPx){
+  const top = yFromMin(startMin, rangeMin, heightPx);
+  const height = yFromMin(endMin - startMin, rangeMin, heightPx);
+  blockEl.style.top = `${top}px`;
+  blockEl.style.height = `${Math.max(18, height)}px`;
+}
+
+function attachDragResize(blockEl, opts){
+  // opts: {rangeMin,heightPx,getStartMin,getEndMin,setRange,minDurMin,bounds,onCommit}
+  const resizeEl = blockEl.querySelector(".resize");
+  let mode = null;
+  let startY = 0;
+  let origStart = 0;
+  let origEnd = 0;
+
+  function onDown(e, m){
+    e.preventDefault();
+    e.stopPropagation();
+    mode = m;
+    startY = e.clientY;
+    origStart = opts.getStartMin();
+    origEnd = opts.getEndMin();
+    window.addEventListener("pointermove", onMove, {passive:false});
+    window.addEventListener("pointerup", onUp, {passive:false});
+  }
+  function onMove(e){
+    if(!mode) return;
+    e.preventDefault();
+    const dy = e.clientY - startY;
+    const dMin = roundToSnap(minFromY(dy, opts.rangeMin, opts.heightPx));
+
+    const [bMin, bMax] = opts.bounds;
+    let newStart = origStart;
+    let newEnd = origEnd;
+
+    if(mode === "drag"){
+      const dur = origEnd - origStart;
+      newStart = clamp(origStart + dMin, bMin, bMax - dur);
+      newEnd = newStart + dur;
+    }else{
+      const minDur = opts.minDurMin ?? SNAP_MIN;
+      newEnd = clamp(origEnd + dMin, origStart + minDur, bMax);
+    }
+
+    newStart = roundToSnap(newStart);
+    newEnd = roundToSnap(newEnd);
+
+    const dur = Math.max((opts.minDurMin ?? SNAP_MIN), newEnd - newStart);
+    newEnd = clamp(newEnd, newStart + (opts.minDurMin ?? SNAP_MIN), bMax);
+    newStart = clamp(newStart, bMin, bMax - dur);
+    newEnd = newStart + dur;
+
+    opts.setRange(newStart, newEnd);
+    updateBlockStyle(blockEl, newStart, newEnd, opts.rangeMin, opts.heightPx);
+  }
+  function onUp(){
+    if(!mode) return;
+    mode = null;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    opts.onCommit?.();
+  }
+
+  blockEl.addEventListener("pointerdown", (e) => {
+    if(e.target === resizeEl) return;
+    onDown(e, "drag");
+  });
+  resizeEl?.addEventListener("pointerdown", (e) => onDown(e, "resize"));
+}
+
+/* =========================
+   PLAN PAGE
+========================= */
+function renderPlan(){
+  const plan = getPlan();
+  // keep tasks in insertion order in storage, but render list sorted in plan order is useful:
+  // We'll sort by startMin then endMin then title (stable-ish).
+  const tasksSorted = plan.tasks.slice().sort((a,b)=>{
+    if(a.startMin!==b.startMin) return a.startMin-b.startMin;
+    if(a.endMin!==b.endMin) return a.endMin-b.endMin;
+    return (a.title||"").localeCompare(b.title||"");
+  });
+
+  buildTimeColumn($("#planTimeCol"), PLAN_START_H, PLAN_END_H, PLAN_RANGE_MIN);
+  const tl = $("#planTimeline");
+  tl.innerHTML = "";
+
+  const H = getHeightPx(tl);
+
+  // blocks
+  for(const t of plan.tasks){
+    const b = document.createElement("div");
+    b.className = "block";
+    b.dataset.id = t.id;
+    b.innerHTML = `
+      <div class="label">
+        <b>${escapeHtml(t.title)}</b>
+        <small>${minsToTimeStr(PLAN_START_H*60 + t.startMin)}~${minsToTimeStr(PLAN_START_H*60 + t.endMin)}</small>
+      </div>
+      <div class="resize"></div>
+    `;
+    updateBlockStyle(b, t.startMin, t.endMin, PLAN_RANGE_MIN, H);
+
+    attachDragResize(b, {
+      rangeMin: PLAN_RANGE_MIN,
+      heightPx: H,
+      getStartMin: ()=>t.startMin,
+      getEndMin: ()=>t.endMin,
+      setRange: (s,e)=>{
+        t.startMin=s; t.endMin=e;
+        b.querySelector("small").textContent = `${minsToTimeStr(PLAN_START_H*60+s)}~${minsToTimeStr(PLAN_START_H*60+e)}`;
+      },
+      minDurMin: SNAP_MIN,
+      bounds: [0, PLAN_RANGE_MIN],
+      onCommit: ()=>{ setPlan(plan); renderPlan(); renderDo(); }
+    });
+
+    tl.appendChild(b);
+  }
+
+  // list (sorted)
+  const list = $("#planList");
+  list.innerHTML = "";
+  for(const t of tasksSorted){
+    const it = document.createElement("div");
+    it.className = "item";
+    it.innerHTML = `
+      <div style="min-width:0">
+        <b contenteditable="true" data-edit="title" data-id="${t.id}" style="outline:none">${escapeHtml(t.title)}</b><br/>
+        <small>${minsToTimeStr(PLAN_START_H*60+t.startMin)}~${minsToTimeStr(PLAN_START_H*60+t.endMin)}</small>
+      </div>
+      <div class="row">
+        <button class="btn danger" data-act="del" data-id="${t.id}">삭제</button>
+      </div>
+    `;
+    list.appendChild(it);
+  }
+
+  $("#planEmptyHint").style.display = plan.tasks.length ? "none" : "block";
+
+  $$('[data-edit="title"]', list).forEach(el=>{
+    el.addEventListener("blur", ()=>{
+      const id = el.dataset.id;
+      const plan = getPlan();
+      const task = plan.tasks.find(x=>x.id===id);
+      if(!task) return;
+      task.title = (el.textContent.trim() || "무제");
+      setPlan(plan);
+      renderPlan();
+      renderDo();
+    });
+    el.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){ e.preventDefault(); el.blur(); }
+    });
+  });
+
+  $$('[data-act="del"]', list).forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const id = btn.dataset.id;
+      const plan = getPlan();
+      plan.tasks = plan.tasks.filter(t=>t.id!==id);
+      setPlan(plan);
+      renderPlan();
+      renderDo();
+    });
+  });
+}
+
+function planAddTask(title){
+  const plan = getPlan();
+  plan.tasks.push({
+    id: uid(),
+    title: (title?.trim() || "무제"),
+    startMin: 0,
+    endMin: 30
+  });
+  setPlan(plan);
+  renderPlan();
+  renderDo();
+}
+
+/* =========================
+   DO PAGE (recording)
+========================= */
+let timerInterval = null;
+
+function startSegment(kind, payload){
+  const now = Date.now();
+  const state = getRunState();
+  if(state?.startTs && state?.kind){
+    closeCurrentSegment(now);
+  }
+  setRunState({ kind, startTs: now, ...(payload||{}) });
+  updateStatusUI();
+  renderDo(); // highlight running button
+}
+
+function closeCurrentSegment(endTs=Date.now()){
+  const state = getRunState();
+  if(!state) return;
+
+  const seg = {
+    id: uid(),
+    kind: state.kind,
+    title: state.title || (state.kind==="interrupt" ? "인터럽트" : "작업"),
+    planId: state.planId || null,
+    startTs: state.startTs,
+    endTs,
+    memo: state.memo || ""
+  };
+  const logs = getLogs();
+  logs.segments.push(seg);
+  setLogs(logs);
+  setRunState(null);
+  updateStatusUI();
+  renderDo();
+  renderLog();
+}
+
+function renderDo(){
+  // mini timeline (plan reference)
+  buildTimeColumn($("#doTimeCol"), PLAN_START_H, PLAN_END_H, PLAN_RANGE_MIN);
+  const tl = $("#doTimeline");
+  if(tl){
+    tl.innerHTML = `<div class="nowLine" id="nowLine"></div>`;
+    const H = getHeightPx(tl);
+    const plan = getPlan();
+
+    // show plan blocks
+    for(const t of plan.tasks){
+      const b = document.createElement("div");
+      b.className = "block";
+      b.style.opacity = "0.55";
+      b.style.pointerEvents = "none";
+      b.innerHTML = `
+        <div class="label">
+          <b>${escapeHtml(t.title)}</b>
+          <small>${minsToTimeStr(PLAN_START_H*60+t.startMin)}~${minsToTimeStr(PLAN_START_H*60+t.endMin)}</small>
+        </div>
+      `;
+      updateBlockStyle(b, t.startMin, t.endMin, PLAN_RANGE_MIN, H);
+      tl.appendChild(b);
+    }
+    updateNowLine();
+  }
+
+  // buttons sorted by plan order
+  const plan = getPlan();
+  const tasksSorted = plan.tasks.slice().sort((a,b)=>{
+    if(a.startMin!==b.startMin) return a.startMin-b.startMin;
+    if(a.endMin!==b.endMin) return a.endMin-b.endMin;
+    return (a.title||"").localeCompare(b.title||"");
+  });
+
+  const state = getRunState();
+
+  const btns = $("#doButtons");
+  btns.innerHTML = "";
+
+  // interrupt big button first
+  const interruptBtn = document.createElement("button");
+  interruptBtn.className = "actionBtn interruptBig" + (state?.kind==="interrupt" ? " running" : "");
+  interruptBtn.innerHTML = `
+    <div class="left">
+      <b>인터럽트</b>
+      <small>누르는 순간부터 인터럽트 기록</small>
+    </div>
+    <div class="right">시작</div>
+  `;
+  interruptBtn.addEventListener("click", ()=> startSegment("interrupt", { title: "인터럽트" }));
+  btns.appendChild(interruptBtn);
+
+  if(tasksSorted.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "할일이 없습니다. 계획 페이지에서 할일을 추가하세요.";
+    empty.style.marginTop = "10px";
+    btns.appendChild(empty);
+  }else{
+    for(const t of tasksSorted){
+      const running = (state?.kind==="task" && state?.planId===t.id);
+      const b = document.createElement("button");
+      b.className = "actionBtn" + (running ? " running" : "");
+      b.innerHTML = `
+        <div class="left">
+          <b>${escapeHtml(t.title)}</b>
+          <small>${minsToTimeStr(PLAN_START_H*60+t.startMin)}~${minsToTimeStr(PLAN_START_H*60+t.endMin)} 계획</small>
+        </div>
+        <div class="right">시작</div>
+      `;
+      b.addEventListener("click", ()=> startSegment("task", { title: t.title, planId: t.id }));
+      btns.appendChild(b);
+    }
+  }
+
+  updateStatusUI();
+}
+
+function updateNowLine(){
+  const line = $("#nowLine");
+  const tl = $("#doTimeline");
+  if(!line || !tl) return;
+
+  const now = new Date();
+  const mins = now.getHours()*60 + now.getMinutes();
+  const minsFrom9 = mins - PLAN_START_H*60;
+  if(minsFrom9 < 0 || minsFrom9 > PLAN_RANGE_MIN){
+    line.style.display = "none";
+    return;
+  }
+  line.style.display = "block";
+  const H = getHeightPx(tl);
+  line.style.top = `${yFromMin(minsFrom9, PLAN_RANGE_MIN, H)}px`;
+}
+
+function updateStatusUI(){
+  const state = getRunState();
+
+  const status = $("#statusPill");
+  const startPill = $("#startPill");
+  const focusTitle = $("#focusTitle");
+  const focusKind = $("#focusKind");
+  const focusPlan = $("#focusPlan");
+  const bigTimer = $("#bigTimer");
+
+  const isInt = state?.kind === "interrupt";
+  if(state){
+    status.textContent = isInt ? `인터럽트 중` : `작업 중`;
+    status.classList.toggle("on", !isInt);
+    status.classList.toggle("interrupt", isInt);
+
+    const start = new Date(state.startTs);
+    startPill.textContent = `시작: ${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+
+    focusTitle.textContent = isInt ? "인터럽트" : (state.title || "작업");
+    focusKind.textContent = `종류: ${isInt ? "인터럽트" : "작업"}`;
+
+    if(!isInt && state.planId){
+      const t = getPlan().tasks.find(x=>x.id===state.planId);
+      focusPlan.textContent = t ? `계획: ${minsToTimeStr(PLAN_START_H*60+t.startMin)}~${minsToTimeStr(PLAN_START_H*60+t.endMin)}` : "계획: -";
+    }else{
+      focusPlan.textContent = "계획: -";
+    }
+  }else{
+    status.textContent = "대기";
+    status.classList.remove("on","interrupt");
+    startPill.textContent = "시작: -";
+    focusTitle.textContent = "지금 수행 중인 작업 없음";
+    focusKind.textContent = "종류: -";
+    focusPlan.textContent = "계획: -";
+  }
+
+  if(timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    updateNowLine();
+    const st = getRunState();
+    bigTimer.textContent = st ? msToHMS(Date.now() - st.startTs) : "00:00:00";
+  }, 250);
+}
+
+/* =========================
+   LOG PAGE (24h view)
+========================= */
+function segmentsForToday(){
+  const logs = getLogs();
+  const dk = dateKey(new Date());
+  return logs.segments.filter(s => dateKey(new Date(s.startTs)) === dk);
+}
+
+function renderLog(){
+  buildTimeColumn($("#logTimeCol"), LOG_START_H, LOG_END_H, LOG_RANGE_MIN);
+  const tl = $("#logTimeline");
+  tl.innerHTML = "";
+  const H = getHeightPx(tl);
+
+  const segs = segmentsForToday().slice().sort((a,b)=>a.startTs-b.startTs);
+
+  for(const s of segs){
+    const startMinMid = toLocalMinsFromMidnight(s.startTs);
+    const endMinMid = toLocalMinsFromMidnight(s.endTs);
+
+    // 24h range
+    let start = clamp(startMinMid, 0, LOG_RANGE_MIN);
+    let end = clamp(endMinMid, 0, LOG_RANGE_MIN);
+    if(end <= start) end = Math.min(LOG_RANGE_MIN, start + SNAP_MIN);
+
+    const b = document.createElement("div");
+    b.className = "block";
+    if(s.kind === "interrupt") b.classList.add("interrupt");
+    b.dataset.id = s.id;
+
+    b.innerHTML = `
+      <div class="label">
+        <b>${escapeHtml(s.title)}</b>
+        <small>${minsToTimeStr(startMinMid)}~${minsToTimeStr(endMinMid)}</small>
+      </div>
+      <div class="resize"></div>
+    `;
+
+    updateBlockStyle(b, start, end, LOG_RANGE_MIN, H);
+
+    // edit timestamps by drag/resize
+    attachDragResize(b, {
+      rangeMin: LOG_RANGE_MIN,
+      heightPx: H,
+      getStartMin: ()=> start,
+      getEndMin: ()=> end,
+      setRange: (newS, newE)=>{
+        newS = clamp(newS, 0, LOG_RANGE_MIN);
+        newE = clamp(newE, 0, LOG_RANGE_MIN);
+
+        const d = new Date(s.startTs);
+        const base = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+
+        s.startTs = base + newS*60*1000;
+        s.endTs = base + newE*60*1000;
+
+        start = newS; end = newE;
+        b.querySelector("small").textContent = `${minsToTimeStr(newS)}~${minsToTimeStr(newE)}`;
+      },
+      minDurMin: SNAP_MIN,
+      bounds: [0, LOG_RANGE_MIN],
+      onCommit: ()=>{
+        const logs = getLogs();
+        const idx = logs.segments.findIndex(x=>x.id===s.id);
+        if(idx >= 0) logs.segments[idx] = s;
+        setLogs(logs);
+        renderLog();
+        const cur = $("#editorPane")?.dataset?.editingId;
+        if(cur === s.id) openEditor(s.id);
+      }
+    });
+
+    b.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      openEditor(s.id);
+    });
+
+    tl.appendChild(b);
+  }
+}
+
+function openEditor(segId){
+  const pane = $("#editorPane");
+  const logs = getLogs();
+  const seg = logs.segments.find(x=>x.id===segId);
+  if(!seg){
+    pane.innerHTML = `<div class="hint">선택한 항목을 찾지 못했습니다.</div>`;
+    return;
+  }
+  pane.dataset.editingId = segId;
+
+  const startMin = toLocalMinsFromMidnight(seg.startTs);
+  const endMin = toLocalMinsFromMidnight(seg.endTs);
+  const isInterrupt = seg.kind === "interrupt";
+
+  pane.innerHTML = `
+    <div class="hint" style="margin-bottom:8px;">
+      종류: <b>${isInterrupt ? "인터럽트" : "작업"}</b> / 날짜: ${dateKey(new Date(seg.startTs))}
+    </div>
+
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="edTitle" value="${escapeAttr(seg.title)}" style="flex:1 1 auto; min-width:220px" />
+    </div>
+
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="edStart" value="${minsToTimeStr(startMin)}" placeholder="HH:MM" style="width:110px" />
+      <span class="muted">~</span>
+      <input type="text" id="edEnd" value="${minsToTimeStr(endMin)}" placeholder="HH:MM" style="width:110px" />
+    </div>
+
+    <div class="sep"></div>
+
+    <textarea id="edMemo" ${isInterrupt ? "" : "disabled"} placeholder="${isInterrupt ? "인터럽트 메모" : "작업 메모는 비활성"}">${escapeHtml(seg.memo||"")}</textarea>
+
+    <div class="sep"></div>
+    <div class="row">
+      <button class="btn primary" id="btnSaveEd">저장</button>
+      <button class="btn danger" id="btnDelEd">삭제</button>
+      <button class="btn" id="btnCloseEd">닫기</button>
+    </div>
+    <div class="sep"></div>
+    <div class="hint">시간 입력 HH:MM / 종료는 시작보다 늦어야 합니다.</div>
+  `;
+
+  $("#btnSaveEd").addEventListener("click", ()=>{
+    const title = ($("#edTitle").value || "").trim() || (isInterrupt ? "인터럽트" : "작업");
+    const st = timeStrToMins(($("#edStart").value||"").trim());
+    const en = timeStrToMins(($("#edEnd").value||"").trim());
+    if(st==null || en==null){ alert("시간 형식이 잘못되었습니다. 예: 13:05"); return; }
+    if(en <= st){ alert("종료 시간이 시작 시간보다 늦어야 합니다."); return; }
+
+    const d = new Date(seg.startTs);
+    const base = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
+
+    seg.title = title;
+    seg.startTs = base + st*60*1000;
+    seg.endTs = base + en*60*1000;
+    if(isInterrupt) seg.memo = ($("#edMemo").value || "").trim();
+
+    const logs = getLogs();
+    const idx = logs.segments.findIndex(x=>x.id===seg.id);
+    if(idx>=0) logs.segments[idx] = seg;
+    setLogs(logs);
+
+    renderLog();
+    openEditor(seg.id);
+  });
+
+  $("#btnDelEd").addEventListener("click", ()=>{
+    if(!confirm("정말 삭제하시겠습니까?")) return;
+    const logs = getLogs();
+    logs.segments = logs.segments.filter(x=>x.id!==seg.id);
+    setLogs(logs);
+    pane.innerHTML = `<div class="hint">삭제되었습니다.</div>`;
+    delete pane.dataset.editingId;
+    renderLog();
+  });
+
+  $("#btnCloseEd").addEventListener("click", ()=>{
+    pane.innerHTML = `<div class="hint">기록 블록을 클릭하면 여기에서 편집합니다.</div>`;
+    delete pane.dataset.editingId;
+  });
+}
+
+/* =========================
+   Copy / Export
+========================= */
+function buildCopyText(){
+  const segs = segmentsForToday().slice().sort((a,b)=>a.startTs-b.startTs);
+  return segs.map(s=>{
+    const st = minsToTimeStr(toLocalMinsFromMidnight(s.startTs));
+    const en = minsToTimeStr(toLocalMinsFromMidnight(s.endTs));
+    const memo = (s.kind==="interrupt" && s.memo) ? ` (${s.memo})` : "";
+    return `${st}~${en} : ${s.title}${memo}`;
+  }).join("\n");
+}
+
+async function copyToClipboard(text){
+  try{
+    await navigator.clipboard.writeText(text);
+    return true;
+  }catch(e){
+    const ta = $("#copyOut");
+    ta.value = text;
+    ta.focus();
+    ta.select();
+    try{ document.execCommand("copy"); return true; }catch(_){ return false; }
+  }
+}
+
+/* =========================
+   Utilities
+========================= */
+function escapeHtml(s){
+  return String(s ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+function escapeAttr(s){ return escapeHtml(s).replaceAll("\n"," "); }
+
+/* =========================
+   Render all
+========================= */
+function renderAll(){
+  renderPlan();
+  renderDo();
+  renderLog();
+  updateStatusUI();
+}
+
+/* =========================
+   Events
+========================= */
+window.addEventListener("hashchange", ()=>setActivePage(location.hash));
+
+$("#btnAddPlan").addEventListener("click", ()=>{
+  planAddTask($("#planNewTitle").value);
+  $("#planNewTitle").value = "";
+});
+$("#planNewTitle").addEventListener("keydown", (e)=>{
+  if(e.key==="Enter"){ e.preventDefault(); $("#btnAddPlan").click(); }
+});
+
+$("#btnStop").addEventListener("click", ()=> closeCurrentSegment(Date.now()));
+$("#btnRefreshNow")?.addEventListener("click", ()=>{ renderDo(); renderLog(); });
+
+$("#btnCopyText").addEventListener("click", async ()=>{
+  const txt = buildCopyText();
+  $("#copyOut").value = txt;
+  const ok = await copyToClipboard(txt);
+  alert(ok ? "클립보드에 복사했습니다." : "복사 실패(텍스트 영역에서 수동 복사).");
+});
+
+$("#btnExport").addEventListener("click", async ()=>{
+  const out = { exportedAt: new Date().toISOString(), plan: getPlan(), logs: getLogs(), running: getRunState() };
+  const txt = JSON.stringify(out, null, 2);
+  $("#copyOut").value = txt;
+  const ok = await copyToClipboard(txt);
+  alert(ok ? "JSON을 클립보드에 복사했습니다." : "복사 실패(텍스트 영역에서 수동 복사).");
+});
+
+$("#btnResetAll1").addEventListener("click", resetAll);
+$("#btnResetAll2").addEventListener("click", resetAll);
+$("#btnResetAll3").addEventListener("click", resetAll);
+
+$("#logTimeline").addEventListener("click", ()=>{
+  $("#editorPane").innerHTML = `<div class="hint">기록 블록을 클릭하면 여기에서 편집합니다.</div>`;
+  delete $("#editorPane").dataset.editingId;
+});
+
+/* init */
+setActivePage(location.hash || "#plan");
+renderAll();
+</script>
+</body>
+</html>
