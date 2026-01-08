@@ -312,6 +312,17 @@
       line-height:1.45;
       white-space:pre-wrap;
     }
+    /* 드래그/리사이즈 중 스크롤(브라우저 기본 터치 동작) 막기 */
+    .block, .block .resize{
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    
+    /* 빈 영역에서는 스크롤이 되도록(선택) */
+    .timeline{
+      touch-action: pan-y;
+    }
   </style>
 </head>
 <body>
@@ -601,14 +612,13 @@ function updateBlockStyle(blockEl, startMin, endMin, rangeMin, heightPx){
   blockEl.style.top = `${top}px`;
   blockEl.style.height = `${Math.max(18, height)}px`;
 }
-
 function attachDragResize(blockEl, opts){
-  // opts: {rangeMin,heightPx,getStartMin,getEndMin,setRange,minDurMin,bounds,onCommit}
   const resizeEl = blockEl.querySelector(".resize");
   let mode = null;
   let startY = 0;
   let origStart = 0;
   let origEnd = 0;
+  let activePointerId = null;
 
   function onDown(e, m){
     e.preventDefault();
@@ -617,12 +627,21 @@ function attachDragResize(blockEl, opts){
     startY = e.clientY;
     origStart = opts.getStartMin();
     origEnd = opts.getEndMin();
+
+    activePointerId = e.pointerId;
+    if (blockEl.setPointerCapture && activePointerId != null) {
+      blockEl.setPointerCapture(activePointerId);
+    }
+
     window.addEventListener("pointermove", onMove, {passive:false});
     window.addEventListener("pointerup", onUp, {passive:false});
+    window.addEventListener("pointercancel", onUp, {passive:false});
   }
+
   function onMove(e){
     if(!mode) return;
     e.preventDefault();
+
     const dy = e.clientY - startY;
     const dMin = roundToSnap(minFromY(dy, opts.rangeMin, opts.heightPx));
 
@@ -650,11 +669,21 @@ function attachDragResize(blockEl, opts){
     opts.setRange(newStart, newEnd);
     updateBlockStyle(blockEl, newStart, newEnd, opts.rangeMin, opts.heightPx);
   }
-  function onUp(){
+
+  function onUp(e){
     if(!mode) return;
     mode = null;
+
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+
+    // release (optional)
+    if (blockEl.releasePointerCapture && activePointerId != null) {
+      try { blockEl.releasePointerCapture(activePointerId); } catch(_) {}
+    }
+    activePointerId = null;
+
     opts.onCommit?.();
   }
 
@@ -662,8 +691,10 @@ function attachDragResize(blockEl, opts){
     if(e.target === resizeEl) return;
     onDown(e, "drag");
   });
+
   resizeEl?.addEventListener("pointerdown", (e) => onDown(e, "resize"));
 }
+
 
 /* =========================
    PLAN PAGE
