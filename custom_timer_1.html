@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Routine Timer</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --primary-color: #4caf50; /* Green for Focus */
+            --secondary-color: #2196f3; /* Blue for Rest */
+            --accent-color: #ff9800;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            background-color: var(--card-color);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            opacity: 0.7;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* Timer Circle */
+        .timer-wrapper {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            margin: 0 auto 2rem;
+        }
+
+        svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        circle {
+            fill: none;
+            stroke-width: 8;
+            stroke-linecap: round;
+        }
+
+        .circle-bg {
+            stroke: #333;
+        }
+
+        .circle-progress {
+            stroke: var(--primary-color);
+            stroke-dasharray: 754; /* 2 * PI * 120 */
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 0.1s linear, stroke 0.3s ease;
+        }
+
+        .timer-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .status-label {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: var(--primary-color);
+            transition: color 0.3s ease;
+        }
+
+        .time-display {
+            font-size: 4rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Stats */
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 2rem;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            border: none;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .btn-primary {
+            background-color: var(--text-color);
+            color: var(--bg-color);
+            flex: 2;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            border: 1px solid #555;
+            color: #aaa;
+            flex: 1;
+        }
+
+        .btn-settings {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: none;
+            color: #777;
+            padding: 5px;
+            font-size: 1.2rem;
+        }
+
+        /* Settings Modal */
+        .modal {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--card-color);
+            z-index: 10;
+            border-radius: 20px;
+            padding: 2rem;
+            box-sizing: border-box;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .modal.open {
+            display: flex;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .setting-row label {
+            font-size: 0.9rem;
+        }
+
+        input[type="number"] {
+            background: #333;
+            border: none;
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            width: 60px;
+            text-align: center;
+            font-size: 1rem;
+        }
+
+        .toggle-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .switch-btn {
+            background: #333;
+            color: #777;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+        }
+        
+        .switch-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        /* Phase Colors */
+        .phase-focus .circle-progress { stroke: var(--primary-color); }
+        .phase-focus .status-label { color: var(--primary-color); }
+        
+        .phase-rest .circle-progress { stroke: var(--secondary-color); }
+        .phase-rest .status-label { color: var(--secondary-color); }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <button class="btn-settings" onclick="toggleSettings()">⚙️</button>
+        <h1>Custom Routine</h1>
+
+        <div class="timer-wrapper phase-rest" id="timerContainer">
+            <svg viewBox="0 0 250 250">
+                <circle class="circle-bg" cx="125" cy="125" r="120"></circle>
+                <circle class="circle-progress" id="progressRing" cx="125" cy="125" r="120"></circle>
+            </svg>
+            <div class="timer-text">
+                <span class="status-label" id="statusLabel">Ready</span>
+                <span class="time-display" id="timeDisplay">05</span>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-label">Reps</span>
+                <span class="stat-value"><span id="currentRep">0</span> / <span id="targetRepDisplay">10</span></span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Cycle</span>
+                <span class="stat-value" id="cycleType">Standard</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-secondary" onclick="resetTimer()">Reset</button>
+            <button class="btn-primary" onclick="toggleTimer()" id="actionBtn">Start</button>
+        </div>
+
+        <!-- Settings Modal -->
+        <div class="modal" id="settingsModal">
+            <h2>Settings</h2>
+            
+            <div class="setting-row">
+                <label>Focus Time (sec)</label>
+                <input type="number" id="focusTimeInput" value="5" min="1">
+            </div>
+            <div class="setting-row">
+                <label>Rest Time (sec)</label>
+                <input type="number" id="restTimeInput" value="5" min="1">
+            </div>
+            <div class="setting-row">
+                <label>Total Reps</label>
+                <input type="number" id="repsInput" value="10" min="1">
+            </div>
+
+            <div class="setting-row">
+                <label>Sound</label>
+                <div class="toggle-group">
+                    <button class="switch-btn active" id="soundOnBtn" onclick="setSound(true)">ON</button>
+                    <button class="switch-btn" id="soundOffBtn" onclick="setSound(false)">OFF</button>
+                </div>
+            </div>
+
+            <button class="btn-primary" style="margin-top: auto;" onclick="saveSettings()">Save & Close</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuration & State
+        let config = {
+            focusTime: 5,
+            restTime: 5,
+            totalReps: 10,
+            sound: true
+        };
+
+        let state = {
+            isRunning: false,
+            isFocusPhase: true, // true = Focus(Contract), false = Rest(Relax)
+            timeLeft: config.focusTime,
+            currentRep: 1,
+            intervalId: null
+        };
+
+        // DOM Elements
+        const timerContainer = document.getElementById('timerContainer');
+        const progressRing = document.getElementById('progressRing');
+        const statusLabel = document.getElementById('statusLabel');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const currentRepEl = document.getElementById('currentRep');
+        const targetRepEl = document.getElementById('targetRepDisplay');
+        const actionBtn = document.getElementById('actionBtn');
+        const settingsModal = document.getElementById('settingsModal');
+
+        // Audio Context (Simple Beep Generator)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playBeep(type) {
+            if (!config.sound) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            if (type === 'start') {
+                // Higher pitch for Focus
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'rest') {
+                // Lower pitch for Rest
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'finish') {
+                // Success sound
+                oscillator.type = 'triangle';
+                oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+                oscillator.frequency.linearRampToValueAtTime(1046.50, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        function vibrate() {
+            if (navigator.vibrate) {
+                navigator.vibrate(200);
+            }
+        }
+
+        // Timer Logic
+        function updateDisplay() {
+            // Update Number
+            timeDisplay.textContent = Math.ceil(state.timeLeft).toString().padStart(2, '0');
+            
+            // Update Text & Color
+            if (state.isFocusPhase) {
+                statusLabel.textContent = "FOCUS";
+                timerContainer.classList.remove('phase-rest');
+                timerContainer.classList.add('phase-focus');
+            } else {
+                statusLabel.textContent = "REST";
+                timerContainer.classList.remove('phase-focus');
+                timerContainer.classList.add('phase-rest');
+            }
+
+            // Update Ring
+            const radius = 120;
+            const circumference = 2 * Math.PI * radius;
+            const totalTime = state.isFocusPhase ? config.focusTime : config.restTime;
+            const offset = circumference - (state.timeLeft / totalTime) * circumference;
+            progressRing.style.strokeDashoffset = offset;
+
+            // Update Reps
+            currentRepEl.textContent = state.currentRep;
+        }
+
+        function switchPhase() {
+            if (state.isFocusPhase) {
+                // Focus finished -> Go to Rest
+                state.isFocusPhase = false;
+                state.timeLeft = config.restTime;
+                playBeep('rest');
+            } else {
+                // Rest finished -> Go to next Rep Focus
+                if (state.currentRep >= config.totalReps) {
+                    completeWorkout();
+                    return;
+                }
+                state.currentRep++;
+                state.isFocusPhase = true;
+                state.timeLeft = config.focusTime;
+                playBeep('start');
+                vibrate(); // Vibrate on start of focus
+            }
+            updateDisplay();
+        }
+
+        function tick() {
+            if (state.timeLeft > 0) {
+                state.timeLeft -= 0.1; // Update every 100ms for smooth ring
+                // Fix floating point issues
+                if (state.timeLeft < 0) state.timeLeft = 0;
+                updateDisplay();
+            } else {
+                switchPhase();
+            }
+        }
+
+        function toggleTimer() {
+            if (state.isRunning) {
+                clearInterval(state.intervalId);
+                state.isRunning = false;
+                actionBtn.textContent = "Resume";
+            } else {
+                // If starting fresh
+                if (state.currentRep === 1 && state.timeLeft === config.focusTime && state.isFocusPhase) {
+                    playBeep('start');
+                    vibrate();
+                }
+                state.intervalId = setInterval(tick, 100);
+                state.isRunning = true;
+                actionBtn.textContent = "Pause";
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(state.intervalId);
+            state.isRunning = false;
+            state.isFocusPhase = true;
+            state.timeLeft = config.focusTime;
+            state.currentRep = 1;
+            actionBtn.textContent = "Start";
+            statusLabel.textContent = "Ready";
+            
+            // Reset Ring
+            progressRing.style.strokeDashoffset = 0;
+            
+            updateDisplay();
+            // Force status back to Ready visually
+            statusLabel.textContent = "Ready";
+            timerContainer.classList.remove('phase-rest');
+            timerContainer.classList.add('phase-focus');
+        }
+
+        function completeWorkout() {
+            clearInterval(state.intervalId);
+            state.isRunning = false;
+            actionBtn.textContent = "Finished";
+            statusLabel.textContent = "DONE";
+            playBeep('finish');
+            
+            // Auto reset after 3 seconds
+            setTimeout(() => {
+                resetTimer();
+            }, 3000);
+        }
+
+        // Settings Handling
+        function toggleSettings() {
+            if (settingsModal.classList.contains('open')) {
+                settingsModal.classList.remove('open');
+            } else {
+                // Populate inputs with current config
+                document.getElementById('focusTimeInput').value = config.focusTime;
+                document.getElementById('restTimeInput').value = config.restTime;
+                document.getElementById('repsInput').value = config.totalReps;
+                settingsModal.classList.add('open');
+                
+                // Pause if running
+                if (state.isRunning) toggleTimer();
+            }
+        }
+
+        function setSound(isOn) {
+            config.sound = isOn;
+            document.getElementById('soundOnBtn').classList.toggle('active', isOn);
+            document.getElementById('soundOffBtn').classList.toggle('active', !isOn);
+        }
+
+        function saveSettings() {
+            config.focusTime = parseInt(document.getElementById('focusTimeInput').value) || 5;
+            config.restTime = parseInt(document.getElementById('restTimeInput').value) || 5;
+            config.totalReps = parseInt(document.getElementById('repsInput').value) || 10;
+            
+            targetRepEl.textContent = config.totalReps;
+            
+            // Update Cycle Type Display based on settings
+            const cycleText = document.getElementById('cycleType');
+            if(config.focusTime <= 2 && config.restTime <= 2) {
+                cycleText.textContent = "Power/Speed";
+            } else if (config.focusTime >= 10) {
+                cycleText.textContent = "Endurance";
+            } else {
+                cycleText.textContent = "Standard";
+            }
+
+            settingsModal.classList.remove('open');
+            resetTimer();
+        }
+
+        // Init
+        updateDisplay();
+        statusLabel.textContent = "Ready";
+
+    </script>
+</body>
+</html>
